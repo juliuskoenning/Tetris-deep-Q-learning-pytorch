@@ -4,7 +4,8 @@
 import argparse
 import os
 import shutil
-from random import random, randint, sample
+from collections import deque
+from random import randint, random, sample
 
 import numpy as np
 import torch
@@ -13,7 +14,6 @@ from tensorboardX import SummaryWriter
 
 from src.deep_q_network import DeepQNetwork
 from src.tetris import Tetris
-from collections import deque
 
 
 def get_args():
@@ -40,6 +40,9 @@ def get_args():
 
 
 def train(opt):
+    total_reward = 0.0
+    total_episodes = 0
+    max_score = 0.0
     if torch.cuda.is_available():
         torch.cuda.manual_seed(123)
     else:
@@ -100,6 +103,14 @@ def train(opt):
             continue
         if len(replay_memory) < opt.replay_memory_size / 10:
             continue
+        total_reward += final_score
+        total_episodes += 1
+        average_reward = total_reward / total_episodes
+        print("Average reward: {}".format(average_reward))
+        writer.add_scalar('Train/Average Reward', average_reward, epoch - 1)
+        max_score = max(max_score, final_score)
+        print("Maximal achieved score: {}".format(max_score))
+        writer.add_scalar('Train/Max Score', max_score, epoch - 1)
         epoch += 1
         batch = sample(replay_memory, min(len(replay_memory), opt.batch_size))
         state_batch, reward_batch, next_state_batch, done_batch = zip(*batch)
@@ -137,6 +148,8 @@ def train(opt):
         writer.add_scalar('Train/Score', final_score, epoch - 1)
         writer.add_scalar('Train/Tetrominoes', final_tetrominoes, epoch - 1)
         writer.add_scalar('Train/Cleared lines', final_cleared_lines, epoch - 1)
+        writer.add_scalar('Train/Loss', loss.item(), epoch - 1)
+        writer.add_scalar('Train/Epsilon', epsilon, epoch - 1)
 
         if epoch > 0 and epoch % opt.save_interval == 0:
             torch.save(model, "{}/tetris_{}".format(opt.saved_path, epoch))
